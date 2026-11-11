@@ -1,0 +1,256 @@
+// Prisma Schema for Drisu Compliance Operations Portal (SQLite Local Fallback)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id               String         @id @default(uuid())
+  email            String         @unique
+  password         String
+  name             String
+  role             String         @default("STAFF")
+  phone            String?
+  avatar           String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  clientProfile    Client?
+  assignedLeads    Lead[]         @relation("AssignedStaffLeads")
+  assignedCases    Case[]         @relation("AssignedStaffCases")
+  managedCases     Case[]         @relation("ManagedCases")
+  uploadedDocs     CaseDocument[] @relation("UploadedByDocs")
+  reviewedDocs     CaseDocument[] @relation("ReviewedByDocs")
+  recordedPayments Payment[]      @relation("RecordedByPayments")
+  comments         CaseComment[]
+  activityLogs     ActivityLog[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Lead {
+  id                 String   @id @default(uuid())
+  name               String
+  companyName        String
+  email              String
+  phone              String?
+  source             String?
+  serviceId          String?
+  serviceName        String?
+  description        String?
+  assignedStaffId    String?
+  status             String   @default("NEW")
+  notes              String?
+  convertedClientId  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  service            Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  assignedStaff      User?    @relation("AssignedStaffLeads", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  convertedClient    Client?  @relation(fields: [convertedClientId], references: [id], onDelete: SetNull)
+
+  @@map("leads")
+}
+
+model Client {
+  id            String   @id @default(uuid())
+  companyName   String
+  contactPerson String
+  email         String
+  phone         String?
+  address       String?
+  city          String?
+  state         String?
+  country       String?  @default("India")
+  gstin         String?
+  pan           String?
+  industry      String?
+  status        String   @default("ONBOARDING")
+  userId        String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cases         Case[]
+  leads         Lead[]
+
+  @@map("clients")
+}
+
+model Service {
+  id                  String                  @id @default(uuid())
+  name                String
+  description         String?
+  category            String?
+  defaultFee          Float                   @default(0.00)
+  renewalPeriodMonths Int                     @default(12)
+  isActive            Boolean                 @default(true)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  checklistItems      DocumentChecklistItem[]
+  cases               Case[]
+  renewals            Renewal[]
+  leads               Lead[]
+
+  @@map("services")
+}
+
+model DocumentChecklistItem {
+  id          String         @id @default(uuid())
+  serviceId   String
+  name        String
+  description String?
+  isRequired  Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+
+  service     Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  documents   CaseDocument[]
+
+  @@map("document_checklist_items")
+}
+
+model Case {
+  id                   String         @id @default(uuid())
+  caseNumber           String         @unique
+  clientId             String
+  serviceId            String
+  title                String
+  description          String?
+  assignedStaffId      String?
+  managerId            String?
+  status               String         @default("DOCUMENTS_PENDING")
+  priority             String         @default("MEDIUM")
+  startDate            DateTime?
+  targetCompletionDate DateTime?
+  completionDate       DateTime?
+  totalFee             Float          @default(0.00)
+  amountPaid           Float          @default(0.00)
+  outstandingAmount    Float          @default(0.00)
+  renewalDate          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  client               Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service              Service        @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  assignedStaff        User?          @relation("AssignedStaffCases", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  manager              User?          @relation("ManagedCases", fields: [managerId], references: [id], onDelete: SetNull)
+  documents            CaseDocument[]
+  payments             Payment[]
+  comments             CaseComment[]
+  activities           ActivityLog[]
+  renewals             Renewal[]
+
+  @@map("cases")
+}
+
+model CaseDocument {
+  id              String                 @id @default(uuid())
+  caseId          String
+  checklistItemId String?
+  fileName        String
+  originalName    String
+  storagePath     String
+  mimeType        String
+  fileSize        Int                    @default(0)
+  status          String                 @default("PENDING")
+  uploadedById    String?
+  uploadedAt      DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewComment   String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  case            Case                   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  checklistItem   DocumentChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  uploadedBy      User?                  @relation("UploadedByDocs", fields: [uploadedById], references: [id], onDelete: SetNull)
+  reviewedBy      User?                  @relation("ReviewedByDocs", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@map("case_documents")
+}
+
+model Payment {
+  id              String   @id @default(uuid())
+  caseId          String
+  amount          Float    @default(0.00)
+  paymentDate     DateTime @default(now())
+  paymentMethod   String   @default("Bank Transfer")
+  referenceNumber String?
+  notes           String?
+  recordedById    String?
+  createdAt       DateTime @default(now())
+
+  case            Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  recordedBy      User?    @relation("RecordedByPayments", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@map("payments")
+}
+
+model Renewal {
+  id            String   @id @default(uuid())
+  caseId        String
+  serviceId     String
+  issueDate     DateTime?
+  expiryDate    DateTime
+  renewalStatus String   @default("ACTIVE")
+  reminderDate  DateTime?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  case          Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@map("renewals")
+}
+
+model CaseComment {
+  id         String   @id @default(uuid())
+  caseId     String
+  authorId   String
+  message    String
+  visibility String   @default("INTERNAL")
+  createdAt  DateTime @default(now())
+
+  case       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("case_comments")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  caseId    String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  case      Case?    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
